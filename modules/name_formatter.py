@@ -20,17 +20,6 @@ import bpy
 from dataclasses import dataclass
 from enum import Enum
 
-PREFIX = 0
-BODY = 1
-SIDE = 2
-NUMBER = 3
-UNDEFINED = 4
-
-@dataclass
-class Segment:
-    name: str = ""
-    type: int = UNDEFINED
-
 class FormatSpecifications(bpy.types.PropertyGroup):
 
     format_guide: bpy.props.StringProperty(
@@ -46,9 +35,27 @@ class FormatSpecifications(bpy.types.PropertyGroup):
     )
 
     format_prefix: bpy.props.StringProperty(
-        name="Prefix",
-        default="",
-        description="Any segment equal to this will be considered the prefix. There can only be one prefix so by default only the first encountered prefix will be considered while the rest are ignored. Separate prefixes using , ."
+        name="Potential Prefixes",
+        default="Def,Ctrl",
+        description="Include any possible prefix values here. Any segment equal to this will be considered the prefix. There can only be one prefix so by default only the first encountered prefix will be considered while the rest are ignored. Separate prefixes using a comma. ."
+    )
+
+    include_prefix: bpy.props.BoolProperty(
+        name="Include Prefixes",
+        default=True,
+        description="Choose whether or not to include a prefix in the final result."
+    )
+
+    format_side: bpy.props.StringProperty(
+        name="Potential Sides",
+        default="l,r,L,R",
+        description="Potential side values, typically used for rigging symmetry. Only the first side segment will be considered. Separating values using a comma."
+    )
+
+    include_side: bpy.props.BoolProperty(
+        name="Include Side",
+        default=True,
+        description="Choose whether to include a side segment in your naming convention."
     )
 
 class NameFormatterUI(bpy.types.Panel):
@@ -64,6 +71,10 @@ class NameFormatterUI(bpy.types.Panel):
 
         layout.row().prop(format_specs, "format_guide")
         layout.row().prop(format_specs, "separator_chars")
+        layout.row().prop(format_specs, "format_prefix")
+        layout.row().prop(format_specs, "include_prefix")
+        layout.row().prop(format_specs, "format_side")
+        layout.row().prop(format_specs, "include_side")
         layout.row().operator(NameFormatterOp.bl_idname)
 
 class NameFormatterOp(bpy.types.Operator):
@@ -83,49 +94,70 @@ def NameFormatterMain(context, operator):
         ReformatBone(b)
 
 def ReformatBone(bone):
-    prefix, body, number, side = ParseName(bone.name)
+    prefix, name_arr, side, num = ParseName(bone.name)
+    bone.name = ConstructName(prefix, name_arr, side, num)
+
+def ConstructName(prefix, name_arr, side, num):
+    guide = bpy.types.Scene.format_specs.format_guide
+
+    new = guide
+    new = ReplacePrefix(new, prefix)
+    new = ReplaceNames(new, name_arr)
+
+def ReplaceNames(guide, name_arr):
+    pos = guide.upper().find("BDBD")
+    guide_prefix = guide[pos] + guide[pos + 1]
+
+
+def ReplacePrefix(guide, prefix):
+    pos = guide.upper().find("PR")
+    guide_prefix = guide[pos] + guide[pos + 1]
+
+    if guide_prefix == "pr":
+        case_prefix = prefix.lower()
+    elif guide_prefix == "PR":
+        case_prefix = prefix.upper()
+    elif guide_prefix == "Pr":
+        case_prefix = prefix.lower()
+        case_prefix[0] = case_prefix[0].upper()
+    elif guide_prefix == "pR":
+        case_prefix = prefix.upper()
+        case_prefix[0] = case_prefix[0].lower()
+
+    guide[pos] = "P"
+    guide[pos+1] = "R"
+
+    return guide.replace("PR", case_prefix)
 
 def ParseName(name):
-    seg_arr = []
-    seg = Segment()
+    name_arr = []
+    prefix = ""
+    side = ""
+    num = -1
 
-    separators = bpy.types.Scene.format_specs.separator_chars
+    fspecs = bpy.types.Scene.format_specs
+    separators = fspecs.separator_chars
+    potential_prefixes = fspecs.format_prefix.split(",")
+    potential_sides = fspecs.format_side.split(",")
+
+    s = ""
 
     for c in name:
         if c in separators:
-            seg_arr.append(segment)
-            seg = Segment()
+            if s in potential_prefixes:
+                prefix = s
+            elif s in potential_sides:
+                side = s
+            elif s.is_digits():
+                num = s
+            else:
+                name_arr.append(s)
+
+            s = ""
         else:
-            seg.name += c
+            s += c
 
-    for s in seg_arr:
-        s.type = DefineSegment(s)
-
-def DefineSegment(str):
-    if str in GetPrefixes():
-        return PREFIX
-    side_vals = ["l", "r", "L", "R"]
-    if str in side_vals:
-        return SIDE
-    if str.is_digits():
-        return NUMBER
-
-    return BODY
-
-def GetPrefixes():
-    prefix_str = bpy.types.Scene.format_specs.format_prefix
-
-    arr = []
-    prefix = ""
-
-    for c in prefix_str:
-        if c == ',':
-            arr.append(prefix)
-            prefix = ""
-        else:
-            prefix += c
-
-    return arr
+    return prefix, name_arr, side, num
 
 classes = [
     FormatSpecifications, 
