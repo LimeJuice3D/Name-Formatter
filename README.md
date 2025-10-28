@@ -8,4 +8,4 @@ Tool for naming objects with incongruous naming conventions.
 1. Download ZIP file
 3. In blender > preferences > addons, select Install from Disk (top right dropdown) and select ZIP file.
 
-This addon is currently untested and in-development, and as such the addon is feature-limited and prone to bugs.
+This addon is unfinished.
